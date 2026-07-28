@@ -1,0 +1,127 @@
+# Environnement complet des TD KBO : MongoDB + JupyterLab + HDFS + Tor.
+#
+#   docker compose up -d          puis  http://localhost:8888
+#
+# L'export KBO (les .csv du dossier parent) est monte en lecture seule sous
+# /data/kbo, comme dans l'enonce.
+#
+# Interfaces web :
+#   JupyterLab   http://localhost:8888
+#   HDFS (UI)    http://localhost:9870
+
+services:
+  # ------------------------------------------------------------ MongoDB
+  mongo:
+    image: mongo:8
+    container_name: kbo-mongo
+    restart: unless-stopped
+    command:
+      # zstd divise par ~4 la taille sur disque des 45 M de documents
+      - --wiredTigerCollectionBlockCompressor
+      - zstd
+      - --wiredTigerCacheSizeGB
+      - "6"
+    ports:
+      # 27018 cote hote : evite le conflit avec un MongoDB deja installe
+      - "27018:27017"
+    volumes:
+      - kbo_mongo_data:/data/db
+      - ../:/data/kbo:ro
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # ------------------------------------------------------------ HDFS
+  namenode:
+    image: apache/hadoop:3.4
+    container_name: namenode
+    hostname: namenode
+    restart: unless-stopped
+    command: ["hdfs", "namenode"]
+    env_file: [./hadoop.env]
+    environment:
+      ENSURE_NAMENODE_DIR: /tmp/hadoop-root/dfs/name
+    ports:
+      - "9870:9870"   # WebHDFS + interface web
+      - "8020:8020"   # RPC
+    volumes:
+      - kbo_hdfs_name:/tmp/hadoop-root/dfs/name
+
+  datanode:
+    image: apache/hadoop:3.4
+    container_name: datanode
+    hostname: datanode
+    restart: unless-stopped
+    command: ["hdfs", "datanode"]
+    env_file: [./hadoop.env]
+    depends_on: [namenode]
+    ports:
+      # publie car WebHDFS redirige le client d'ecriture vers le datanode
+      - "9864:9864"
+    volumes:
+      - kbo_hdfs_data:/tmp/hadoop-root/dfs/data
+
+  # ------------------------------------------------------------ Tor x3
+  # Trois identites independantes. En interne chacune ecoute sur 9050/9051 ;
+  # les ports hote sont decales pour pouvoir les piloter depuis la machine.
+  tor1:
+    image: dperson/torproxy
+    container_name: tor1
+    restart: unless-stopped
+    environment:
+      PASSWORD: ${TOR_PASSWORD:-kbotp2026}
+    ports:
+      - "9050:9050"   # SOCKS5
+      - "9051:9051"   # ControlPort (SIGNAL NEWNYM)
+
+  tor2:
+    image: dperson/torproxy
+    container_name: tor2
+    restart: unless-stopped
+    environment:
+      PASSWORD: ${TOR_PASSWORD:-kbotp2026}
+    ports:
+      - "9060:9050"
+      - "9061:9051"
+
+  tor3:
+    image: dperson/torproxy
+    container_name: tor3
+    restart: unless-stopped
+    environment:
+      PASSWORD: ${TOR_PASSWORD:-kbotp2026}
+    ports:
+      - "9070:9050"
+      - "9071:9051"
+
+  # ------------------------------------------------------------ JupyterLab
+  jupyter:
+    image: quay.io/jupyter/minimal-notebook:latest
+    container_name: kbo-jupyter
+    restart: unless-stopped
+    depends_on:
+      mongo:
+        condition: service_healthy
+    environment:
+      KBO_DATA_DIR: /data/kbo
+      MONGO_URI: mongodb://mongo:27017
+      MONGO_DB: kbo
+      HDFS_URL: http://namenode:9870
+      HDFS_USER: root
+      TOR_PASSWORD: ${TOR_PASSWORD:-kbotp2026}
+      CBSO_MIN_INTERVAL: "2.0"
+    ports:
+      - "8888:8888"
+    volumes:
+      - ./:/home/jovyan/work
+      - ../:/data/kbo:ro
+    command: >
+      bash -c "pip install --quiet 'pymongo>=4.9' 'requests[socks]' hdfs stem &&
+               start-notebook.py --IdentityProvider.token='' --ServerApp.root_dir=/home/jovyan/work"
+
+volumes:
+  kbo_mongo_data:
+  kbo_hdfs_name:
+  kbo_hdfs_data:
