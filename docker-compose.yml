@@ -8,8 +8,14 @@ services:
       # zstd divise par ~4 la taille sur disque des 45 M de documents
       - --wiredTigerCollectionBlockCompressor
       - zstd
+      # 3 Go, et non 6 : le cache doit cohabiter avec les 2 JVM Hadoop, Jupyter
+      # et Airflow dans la meme VM. A 6 Go la VM saturait et mongod cessait de
+      # repondre (port ouvert mais aucune reponse) des la premiere requete lourde.
       - --wiredTigerCacheSizeGB
-      - "6"
+      - "3"
+    # Plafond dur : le cache n'est pas le seul consommateur de mongod (tri,
+    # agregations, connexions). La marge au-dessus du cache absorbe ces pics.
+    mem_limit: 4g
     ports:
       # 27018 cote hote : evite le conflit avec un MongoDB deja installe
       - "27018:27017"
@@ -38,6 +44,7 @@ services:
       - "8020:8020"   # RPC
     volumes:
       - kbo_hdfs_name:/tmp/hadoop-root/dfs/name
+    mem_limit: 1500m
 
   datanode:
     image: apache/hadoop:3.4
@@ -53,6 +60,7 @@ services:
       - "9864:9864"
     volumes:
       - kbo_hdfs_data:/tmp/hadoop-root/dfs/data
+    mem_limit: 1500m
 
   tor1:
     image: dperson/torproxy
@@ -105,6 +113,7 @@ services:
     volumes:
       - ./:/home/jovyan/work
       - ../:/data/kbo:ro
+    mem_limit: 2g
     command: >
       bash -c "pip install --quiet 'pymongo>=4.9' 'requests[socks]' hdfs stem &&
                start-notebook.py --IdentityProvider.token='' --ServerApp.root_dir=/home/jovyan/work"
@@ -134,6 +143,7 @@ services:
     volumes:
       - ./airflow/dags:/opt/airflow/dags
       - ./:/opt/airflow/kbo
+    mem_limit: 1500m
     command: bash -c "airflow standalone"
 
 volumes:

@@ -1,0 +1,12 @@
+# Ignorer les fichiers de données CSV
+*.csv
+
+# Ignorer les dossiers de données KBO
+KboOpenData_*/
+
+# Ignorer les fichiers temporaires Python
+__pycache__/
+*.pyc
+
+# Ignorer les fichiers temporaires Jupyter
+.ipynb_checkpoints/

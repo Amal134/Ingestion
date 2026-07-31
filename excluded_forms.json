@@ -1,0 +1,33 @@
+{
+ "threshold": 0.95,
+ "forms": [
+  "017",
+  "070"
+ ],
+ "detail": {
+  "610": {
+   "label": "Société à responsabilité limitée",
+   "sampled": 12,
+   "without": 3,
+   "ratio": 0.25
+  },
+  "017": {
+   "label": "Association sans but lucratif",
+   "sampled": 12,
+   "without": 12,
+   "ratio": 1.0
+  },
+  "070": {
+   "label": "Association des copropriétaires",
+   "sampled": 12,
+   "without": 12,
+   "ratio": 1.0
+  },
+  "014": {
+   "label": "Société anonyme",
+   "sampled": 12,
+   "without": 0,
+   "ratio": 0.0
+  }
+ }
+}
